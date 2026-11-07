@@ -44,6 +44,37 @@ bytes are written) pings once and records `session_health` in the sidecar; it
 does not connect to the loader a second time. An idle timeout after a successful
 send does not ping and is not `elfldr_dead`.
 
+## Control the dev-control daemon
+
+```sh
+python3 host/dev_ctl.py --host "$PS5_HOST" ping
+python3 host/dev_ctl.py --host "$PS5_HOST" list
+python3 host/dev_ctl.py --host "$PS5_HOST" kill            # ACTIVE app
+python3 host/dev_ctl.py --host "$PS5_HOST" kill PPSA12345
+python3 host/dev_ctl.py --host "$PS5_HOST" shot -o capture.png
+```
+
+Talk to the resident `dev-control` payload (TCP 9098, see
+[../payloads/dev-control/README.md](../payloads/dev-control/README.md)).
+`kill` defaults to the active app; a title id, numeric pid, or process
+name (`eboot.bin`) also works. `shot` fetches the newest system
+screenshot file the console already has and saves it as
+`capture.<png|jpg>` unless `-o` names a file; an existing output file
+is never overwritten, and `ERR:NO_SCREENSHOT` writes nothing. It is
+not a live framebuffer capture.
+
+| Argument | Default | Meaning |
+| --- | --- | --- |
+| `--host` | Required | Console address or hostname |
+| `--port` | `9098` | Dev-control TCP port, from 1 to 65535 |
+| `--timeout` | `30` | Positive finite seconds to wait for connect/reply |
+
+| Exit code | Meaning |
+| --- | --- |
+| `0` | The payload answered `OK:...` |
+| `1` | Transport error, or the payload answered `ERR:...` |
+| `2` | Argument error |
+
 ## Classify a console session
 
 ```sh
