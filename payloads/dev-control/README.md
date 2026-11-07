@@ -67,10 +67,13 @@ shell bricks the session.
 
 ## Screenshot behaviour and limits
 
-`SHOT` streams the newest `.png` / `.jpg` file under
-`/user/av_contents/photo/` — take a screenshot with the Create button
-first. If that directory has no image file it answers
-`ERR:NO_SCREENSHOT` and the host tool writes nothing.
+`SHOT` streams the newest `.png` / `.jpg` file found by a recursive
+scan under `/user/av_contents/photo/` — take a screenshot with the Create
+button first. Real screenshots sit two levels down, at
+`photo/NPXS40087/<TITLE_ID>/<3-hex>/<stamp>.jpg` (verified on the base-model
+PS5 2026-11-07; an earlier top-level-only scan missed every real screenshot).
+If no image file is found it answers `ERR:NO_SCREENSHOT` and the host tool
+writes nothing.
 
 This is **not** a live framebuffer capture. The SDK v0.44 ships no
 screenshot library and this repository has no validated framebuffer

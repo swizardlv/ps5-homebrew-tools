@@ -33,9 +33,11 @@
  * screenshot library and no validated live-framebuffer source, and this
  * repository contains no framebuffer capture path. SHOT therefore does
  * NOT read a framebuffer and does NOT invent a raw file: it streams the
- * newest system screenshot file under /user/av_contents/photo/
- * (take one with the Create button first). If that directory has no
- * .png/.jpg, it returns ERR:NO_SCREENSHOT. A live framebuffer capture
+ * newest system screenshot file found under /user/av_contents/photo/
+ * (searched recursively: real screenshots sit at
+ * photo/NPXS40087/<TITLE_ID>/<3-hex>/<stamp>.jpg, verified on console
+ * 2026-11-07). Take one with the Create button first. If no .png/.jpg
+ * is found it returns ERR:NO_SCREENSHOT. A live framebuffer capture
  * needs a validated capture source first and is explicitly out of scope
  * for this payload.
  */
@@ -361,39 +363,65 @@ static int has_ext(const char *name, const char *ext) {
     return 1;
 }
 
-static int handle_shot(int fd) {
-    DIR *d = opendir(SHOT_DIR);
+/* Screenshots live two levels below SHOT_DIR on a real console:
+ * /user/av_contents/photo/NPXS40087/<TITLE_ID>/<3-hex>/<stamp>.jpg
+ * (verified on the base-model PS5 2026-11-07 via FTP). Scan recursively
+ * so the top-level-only search does not miss every real screenshot. */
+static char g_best[576];
+static char g_best_fmt[8];
+static time_t g_best_mtime;
+static int g_scanned;
+
+static void scan_shot_dir(const char *dir, int depth) {
+    DIR *d = opendir(dir);
     if (!d)
-        return reply(fd, "ERR:NO_SCREENSHOT\n");
-    char best[512] = {0};
-    char best_fmt[8] = {0};
-    time_t best_mtime = 0;
+        return;
     struct dirent *e;
     while ((e = readdir(d))) {
-        const char *fmt = NULL;
-        if (has_ext(e->d_name, ".png"))
-            fmt = "png";
-        else if (has_ext(e->d_name, ".jpg") || has_ext(e->d_name, ".jpeg"))
-            fmt = "jpg";
-        if (!fmt)
+        if (g_scanned > 8192)
+            break;
+        ++g_scanned;
+        if (!strcmp(e->d_name, ".") || !strcmp(e->d_name, ".."))
             continue;
         char path[576];
-        int path_len = snprintf(path, sizeof(path), "%s/%s", SHOT_DIR,
-                                e->d_name);
+        int path_len = snprintf(path, sizeof(path), "%s/%s", dir, e->d_name);
         if (path_len < 0 || (size_t)path_len >= sizeof(path))
             continue;
         struct stat st;
-        if (stat(path, &st) != 0 || !S_ISREG(st.st_mode))
+        if (stat(path, &st) != 0)
             continue;
-        if (!best[0] || st.st_mtime > best_mtime) {
-            snprintf(best, sizeof(best), "%s", path);
-            snprintf(best_fmt, sizeof(best_fmt), "%s", fmt);
-            best_mtime = st.st_mtime;
+        if (S_ISDIR(st.st_mode)) {
+            if (depth > 0)
+                scan_shot_dir(path, depth - 1);
+        } else if (S_ISREG(st.st_mode)) {
+            const char *fmt = NULL;
+            if (has_ext(e->d_name, ".png"))
+                fmt = "png";
+            else if (has_ext(e->d_name, ".jpg") ||
+                     has_ext(e->d_name, ".jpeg"))
+                fmt = "jpg";
+            if (!fmt)
+                continue;
+            if (!g_best[0] || st.st_mtime > g_best_mtime) {
+                snprintf(g_best, sizeof(g_best), "%s", path);
+                snprintf(g_best_fmt, sizeof(g_best_fmt), "%s", fmt);
+                g_best_mtime = st.st_mtime;
+            }
         }
     }
     closedir(d);
-    if (!best[0])
+}
+
+static int handle_shot(int fd) {
+    g_best[0] = 0;
+    g_best_fmt[0] = 0;
+    g_best_mtime = 0;
+    g_scanned = 0;
+    scan_shot_dir(SHOT_DIR, 3);
+    if (!g_best[0])
         return reply(fd, "ERR:NO_SCREENSHOT\n");
+    const char *best = g_best;
+    const char *best_fmt = g_best_fmt;
 
     int file = open(best, O_RDONLY | O_NOFOLLOW);
     if (file < 0)
